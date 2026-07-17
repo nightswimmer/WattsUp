@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WattsUp — Battery Pack Designer</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%A1%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <header class="app-header">
+    <div class="app-title">
+      <h1>⚡ WattsUp</h1>
+      <span class="app-subtitle">Battery pack designer &amp; comparator</span>
+    </div>
+    <div class="app-controls">
+      <label class="currency-label">Currency
+        <select id="currency-select">
+          <option value="€">€ EUR</option>
+          <option value="$">$ USD</option>
+          <option value="£">£ GBP</option>
+        </select>
+      </label>
+      <button id="add-pack-btn" class="btn btn-primary">+ Add pack</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Pack cards -->
+    <section id="packs-section">
+      <div id="pack-list" class="pack-grid"></div>
+      <p id="empty-hint" class="empty-hint">No packs yet. Click <strong>+ Add pack</strong> to create your first battery pack.</p>
+    </section>
+
+    <!-- Comparison -->
+    <section id="compare-section" hidden>
+      <h2>Comparison</h2>
+      <p class="section-hint" id="compare-hint"></p>
+      <div class="table-wrap">
+        <table id="compare-table"></table>
+      </div>
+    </section>
+
+    <!-- Discharge curves -->
+    <section id="curves-section" hidden>
+      <h2>Typical discharge curves</h2>
+      <p class="section-hint">Estimated pack voltage vs. depth of discharge, at moderate load (~0.5&nbsp;C), from typical chemistry curves. Real curves depend on load, temperature and cell quality.</p>
+      <div id="curve-legend" class="chart-legend"></div>
+      <div id="curve-chart" class="chart-host"></div>
+      <details class="table-details">
+        <summary>Data table</summary>
+        <div class="table-wrap"><table id="curve-table"></table></div>
+      </details>
+    </section>
+
+    <!-- Top view canvas -->
+    <section id="canvas-section" hidden>
+      <h2>Top view</h2>
+      <p class="section-hint">Packs drawn to scale (mm), including typical 2&nbsp;mm inter-cell spacing. Drag a pack to move it, drag empty space to pan, scroll to zoom.</p>
+      <div class="canvas-wrap">
+        <canvas id="top-canvas"></canvas>
+        <div class="canvas-hud">
+          <button id="canvas-reset" class="btn btn-small" title="Reset view">⌂ Fit</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Add / edit pack dialog -->
+  <dialog id="pack-dialog">
+    <form id="pack-form" method="dialog">
+      <h2 id="dialog-title">Add pack</h2>
+
+      <div class="form-grid">
+        <label class="span2">Name
+          <input type="text" id="f-name" placeholder="e.g. 48V e-bike pack" maxlength="40">
+        </label>
+
+        <label>Series (S)
+          <input type="number" id="f-s" min="1" max="500" step="1" value="1" required>
+        </label>
+        <label>Parallel (P)
+          <input type="number" id="f-p" min="1" max="500" step="1" value="1" required>
+        </label>
+      </div>
+
+      <h3>Cell parameters <span class="optional-note">(all optional — we calculate what we can)</span></h3>
+      <div class="form-grid">
+        <label>Chemistry
+          <select id="f-chemistry"></select>
+        </label>
+        <label>Cell size
+          <select id="f-size"></select>
+        </label>
+
+        <div id="custom-cyl-fields" class="span2 subfields" hidden>
+          <label>Diameter (mm)
+            <input type="number" id="f-diameter" min="1" max="200" step="0.1">
+          </label>
+          <label>Height (mm)
+            <input type="number" id="f-height" min="1" max="500" step="0.1">
+          </label>
+        </div>
+
+        <div id="prismatic-fields" class="span2 subfields" hidden>
+          <label>Length (mm)
+            <input type="number" id="f-plen" min="1" max="1000" step="0.1">
+          </label>
+          <label>Width (mm)
+            <input type="number" id="f-pwid" min="1" max="1000" step="0.1">
+          </label>
+          <label>Height (mm)
+            <input type="number" id="f-phei" min="1" max="1000" step="0.1">
+          </label>
+        </div>
+
+        <label>Capacity (mAh)
+          <input type="number" id="f-capacity" min="1" step="1" placeholder="e.g. 3500">
+        </label>
+        <label>Max discharge (A)
+          <input type="number" id="f-current" min="0.1" step="0.1" placeholder="e.g. 10">
+        </label>
+        <label>Weight (g)
+          <input type="number" id="f-weight" min="0.1" step="0.1" placeholder="e.g. 48">
+        </label>
+        <label>Price per cell
+          <input type="number" id="f-price" min="0" step="0.01" placeholder="e.g. 4.50">
+        </label>
+      </div>
+
+      <div class="dialog-buttons">
+        <button type="button" id="dialog-cancel" class="btn">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="dialog-save">Save pack</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="chart-tooltip" class="chart-tooltip" hidden></div>
+
+  <script src="js/data.js"></script>
+  <script src="js/calc.js"></script>
+  <script src="js/chart.js"></script>
+  <script src="js/canvas.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
