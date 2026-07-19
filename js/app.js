@@ -21,7 +21,8 @@
       packs: state.packs,
       positions: state.positions,
       referenceId: state.referenceId,
-      currency: state.currency
+      currency: state.currency,
+      connections: StripPlanner.getState()
     };
   }
 
@@ -32,6 +33,7 @@
     state.positions = data.positions || {};
     state.referenceId = state.packs.some(p => p.id === data.referenceId) ? data.referenceId : null;
     state.currency = data.currency || "€";
+    StripPlanner.setState(data.connections || null);
     return true;
   }
 
@@ -559,17 +561,64 @@
     );
   }
 
+  function renderStrips() {
+    StripPlanner.setPacks(state.packs.map(p => {
+      const m = computePack(p);
+      return {
+        id: p.id,
+        name: p.name,
+        s: p.s,
+        p: p.p,
+        current: m.maxCurrentA,
+        pitch: m.geo ? m.geo.cellW + CELL_SPACING_MM : null
+      };
+    }));
+    StripPlanner.render();
+  }
+
   function renderAll() {
     renderPacks();
     renderComparison();
     renderChart();
     renderCanvas();
+    renderStrips();
+    if (document.getElementById("tab-planner").hidden) plannerDirty = true;
+  }
+
+  /* ---------- tabs ---------- */
+  const TAB_KEY = "wattsup-tab-v1";
+  let plannerDirty = false;   // chart/canvas were (re)rendered while the planner tab was hidden
+
+  function activateTab(name) {
+    const planner = name !== "connections";
+    const wasHidden = document.getElementById("tab-planner").hidden;
+    document.getElementById("tab-planner").hidden = !planner;
+    document.getElementById("tab-connections").hidden = planner;
+    if (planner && wasHidden && plannerDirty) {
+      // hidden elements had no size — re-render the chart and re-fit the canvas now
+      plannerDirty = false;
+      requestAnimationFrame(() => {
+        renderChart();
+        if (state.packs.length > 0) TopView.fit();
+      });
+    }
+    document.getElementById("tab-btn-planner").classList.toggle("active", planner);
+    document.getElementById("tab-btn-connections").classList.toggle("active", !planner);
+    document.getElementById("tab-btn-planner").setAttribute("aria-selected", planner);
+    document.getElementById("tab-btn-connections").setAttribute("aria-selected", !planner);
+    document.getElementById("add-pack-btn").hidden = !planner;   // belongs to the planner tab
+    try { localStorage.setItem(TAB_KEY, planner ? "planner" : "connections"); } catch { /* private mode */ }
   }
 
   /* ---------- init ---------- */
   function init() {
     populateSelects();
+    StripPlanner.init({ onChange: save });   // before load() so setState can reach the inputs
     load();
+
+    document.getElementById("tab-btn-planner").addEventListener("click", () => activateTab("planner"));
+    document.getElementById("tab-btn-connections").addEventListener("click", () => activateTab("connections"));
+    activateTab(localStorage.getItem(TAB_KEY) === "connections" ? "connections" : "planner");
 
     const currencySelect = document.getElementById("currency-select");
     currencySelect.value = state.currency;

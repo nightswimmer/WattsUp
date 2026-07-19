@@ -13,6 +13,10 @@
       <h1>⚡ WattsUp</h1>
       <span class="app-subtitle">Battery pack designer &amp; comparator</span>
     </div>
+    <nav class="tab-bar" role="tablist">
+      <button class="tab-btn active" id="tab-btn-planner" role="tab" aria-selected="true" aria-controls="tab-planner">Pack Planner</button>
+      <button class="tab-btn" id="tab-btn-connections" role="tab" aria-selected="false" aria-controls="tab-connections">Pack Connections</button>
+    </nav>
     <div class="app-controls">
       <label class="currency-label">Currency
         <select id="currency-select">
@@ -29,6 +33,7 @@
   </header>
 
   <main>
+   <div id="tab-planner" role="tabpanel">
     <!-- Pack cards -->
     <section id="packs-section">
       <div id="pack-list" class="pack-grid"></div>
@@ -67,6 +72,88 @@
         </div>
       </div>
     </section>
+   </div>
+
+   <div id="tab-connections" role="tabpanel" hidden>
+    <section id="strips-section">
+      <h2>Cell interconnect strips</h2>
+      <p class="section-hint">
+        Dimension the nickel strips that join the cells. The drawing shows the repeating unit of the pack —
+        two parallel groups (A, B) connected in series through P−1 bridges. Currents assume balanced cells
+        (each sources I ÷ P) and resistivity at 20&nbsp;°C; the limits are conservative rules of thumb for
+        welded strip with limited cooling, not physical maxima.
+        Moving particles show the direction of the current in each strip — more and redder particles
+        mean that part runs closer to its recommended limit.
+        The faint strip below the B cells is the <strong>output collector strip</strong> on their far terminal
+        (relevant when B is the pack's last group): each B cell delivers its I ÷ P share into it. Click the
+        round points to set/unset <strong>cable taps</strong> there — the strip currents recalculate around
+        your taps (tap leads assumed ideal and joined). It uses the group-bridge width and does not affect
+        the interconnect above.
+      </p>
+
+      <div class="strip-layout">
+        <form class="strip-controls" onsubmit="return false">
+          <div class="form-grid">
+            <label class="span2">Load from pack
+              <select id="c-from-pack" title="Copy S, P, max current and cell pitch from a Pack Planner pack"></select>
+            </label>
+
+            <label class="span2">Strip material
+              <select id="c-material"></select>
+            </label>
+            <p id="c-material-note" class="material-note span2"></p>
+
+            <label>Resistivity (Ω·mm²/m)
+              <input type="number" id="c-resistivity" min="0.001" max="10" step="0.0001">
+            </label>
+            <label>Max density (A/mm²)
+              <input type="number" id="c-density" min="0.1" max="1000" step="0.5">
+            </label>
+
+            <label>Strip thickness (mm)
+              <input type="number" id="c-thickness" min="0.01" max="5" step="0.01">
+            </label>
+            <label>Strip layers
+              <input type="number" id="c-layers" min="1" max="4" step="1">
+            </label>
+
+            <label>Group bridge width (mm)
+              <input type="number" id="c-width-par" min="0.5" max="100" step="0.5" title="Bridges between cells of the same parallel group">
+            </label>
+            <label>Series bridge width (mm)
+              <input type="number" id="c-width-ser" min="0.5" max="100" step="0.5" title="The P−1 bridges between the two groups">
+            </label>
+
+            <label>Series groups (S)
+              <input type="number" id="c-s" min="2" max="500" step="1">
+            </label>
+            <label>Parallel cells (P)
+              <input type="number" id="c-p" min="1" max="100" step="1">
+            </label>
+
+            <label class="span2">Max pack current (A)
+              <input type="number" id="c-current" min="0" step="1">
+            </label>
+
+            <label>Cell pitch (mm)
+              <input type="number" id="c-pitch" min="5" max="200" step="0.1" title="Distance between adjacent cell centers">
+            </label>
+            <label>Group gap (mm)
+              <input type="number" id="c-gap" min="2" max="200" step="0.1" title="Series bridge length — distance between the two cell rows">
+            </label>
+          </div>
+        </form>
+
+        <div class="strip-main">
+          <p id="strip-warnings" class="strip-warning" hidden></p>
+          <div id="strip-legend" class="strip-legend"></div>
+          <div class="strip-diagram-wrap"><div id="strip-diagram" class="strip-diagram"></div></div>
+          <h3 class="strip-results-title">Results</h3>
+          <dl id="strip-results" class="strip-results"></dl>
+        </div>
+      </div>
+    </section>
+   </div>
   </main>
 
   <!-- Add / edit pack dialog -->
@@ -144,6 +231,7 @@
   <script src="js/calc.js"></script>
   <script src="js/chart.js"></script>
   <script src="js/canvas.js"></script>
+  <script src="js/strips.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

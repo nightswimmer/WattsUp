@@ -93,6 +93,46 @@ const CELL_SIZES = {
 const CELL_SPACING_MM = 2;
 
 /**
+ * Strip materials for cell interconnects (Pack Connections tab).
+ * resistivity: Ω·mm²/m (numerically equal to µΩ·m) at ~20 °C.
+ * maxDensity: recommended continuous current density in A/mm² for welded
+ * strip inside a pack with limited cooling — conservative rule-of-thumb
+ * values, meant as a design limit, not an absolute physical maximum.
+ */
+const STRIP_MATERIALS = {
+  "pure-nickel": {
+    label: "Pure nickel (99.6 %)",
+    resistivity: 0.0699,
+    maxDensity: 10,
+    notes: "The standard for spot-welded packs. Corrosion-proof, welds easily, good conductivity."
+  },
+  "nickel-steel": {
+    label: "Nickel-plated steel",
+    resistivity: 0.15,
+    maxDensity: 4,
+    notes: "Much cheaper but ~2× the resistance of pure nickel — runs hotter at the same current. Often sold as “nickel strip”; verify what you buy."
+  },
+  "nickel-copper": {
+    label: "Nickel-plated copper",
+    resistivity: 0.0178,
+    maxDensity: 25,
+    notes: "~4× the conductivity of pure nickel — for high-current packs. Harder to spot-weld (needs more energy or a nickel sandwich)."
+  },
+  "copper": {
+    label: "Copper (bare)",
+    resistivity: 0.0172,
+    maxDensity: 25,
+    notes: "Best conductor, but very hard to spot-weld directly and can corrode; usually used as busbar with nickel tabs."
+  },
+  "custom": {
+    label: "Custom…",
+    resistivity: 0.07,
+    maxDensity: 8,
+    notes: "Enter your own resistivity and current-density limit."
+  }
+};
+
+/**
  * Categorical series palette (validated for CVD safety and contrast,
  * light + dark). Assigned to packs in fixed slot order, never cycled.
  */

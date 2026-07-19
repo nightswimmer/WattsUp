@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "packs": [
+    {
+      "id": "pkmrqvujl677m2",
+      "slot": 0,
+      "name": "Current LiPo",
+      "s": 13,
+      "p": 3,
+      "chemistry": "lipo",
+      "size": "18650",
+      "diameter": null,
+      "height": null,
+      "plen": null,
+      "pwid": null,
+      "phei": null,
+      "capacity": 1150,
+      "current": 15,
+      "weight": 45,
+      "price": 1.6
+    },
+    {
+      "id": "pkmrqwhyiw7ziq",
+      "slot": 1,
+      "name": "A123 Systems APR18650M1B 1100mAh - 30A",
+      "s": 15,
+      "p": 4,
+      "chemistry": "lifepo4",
+      "size": "18650",
+      "diameter": null,
+      "height": null,
+      "plen": null,
+      "pwid": null,
+      "phei": null,
+      "capacity": 1100,
+      "current": 30,
+      "weight": 39,
+      "price": 0.99
+    },
+    {
+      "id": "pkmrqwsg45",
+      "slot": 2,
+      "name": "JGNE 18650 1100mah - 33A LIFEPO4",
+      "s": 15,
+      "p": 4,
+      "chemistry": "lifepo4",
+      "size": "18650",
+      "diameter": null,
+      "height": null,
+      "plen": null,
+      "pwid": null,
+      "phei": null,
+      "capacity": 1100,
+      "current": 33,
+      "weight": 40,
+      "price": 1.78
+    },
+    {
+      "id": "pkmrr00pnd",
+      "slot": 3,
+      "name": "A123 Systems APR18650M1B 1100mAh",
+      "s": 15,
+      "p": 5,
+      "chemistry": "lifepo4",
+      "size": "18650",
+      "diameter": null,
+      "height": null,
+      "plen": null,
+      "pwid": null,
+      "phei": null,
+      "capacity": 1100,
+      "current": 30,
+      "weight": 39,
+      "price": 0.99
+    },
+    {
+      "id": "pkmrqygrrx",
+      "slot": 4,
+      "name": "JGNE 26650 3000mah - 30A LIFEPO4",
+      "s": 15,
+      "p": 4,
+      "chemistry": "lifepo4",
+      "size": "26650",
+      "diameter": null,
+      "height": null,
+      "plen": null,
+      "pwid": null,
+      "phei": null,
+      "capacity": 3000,
+      "current": 30,
+      "weight": 85,
+      "price": 3.65
+    }
+  ],
+  "positions": {
+    "pkmrqvujl677m2": {
+      "x": -7.832885468438082,
+      "y": 23.91210370041277
+    },
+    "pkmrqwhyiw7ziq": {
+      "x": 116.46030975479965,
+      "y": 22.709939649278283
+    },
+    "pkmrqwsg45": {
+      "x": 268.5064484575247,
+      "y": 24.373937679536894
+    },
+    "pkmrqygrrx": {
+      "x": 542.7050761573882,
+      "y": 1.0068245796461497
+    },
+    "pkmrr00pnd": {
+      "x": 396.1602232162118,
+      "y": 25.052941176470597
+    }
+  },
+  "referenceId": "pkmrqvujl677m2",
+  "currency": "€",
+  "connections": {
+    "material": "pure-nickel",
+    "resistivity": 0.0699,
+    "maxDensity": 10,
+    "thickness": 0.2,
+    "layers": 1,
+    "widthPar": 8,
+    "widthSer": 8,
+    "s": 15,
+    "p": 5,
+    "current": 40,
+    "pitch": 20,
+    "gap": 22,
+    "outputs": [
+      2,
+      1
+    ]
+  }
+}
