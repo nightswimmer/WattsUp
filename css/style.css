@@ -14,6 +14,8 @@
   --accent-ink: #ffffff;
   --danger: #d03b3b;
   --good-wash: rgba(12, 163, 12, 0.12);
+  --bad-wash: rgba(208, 59, 59, 0.10);
+  --good-text: #0a8a0a;
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.07);
 }
 
@@ -32,6 +34,8 @@
     --accent-ink: #ffffff;
     --danger: #e66767;
     --good-wash: rgba(12, 163, 12, 0.20);
+    --bad-wash: rgba(230, 103, 103, 0.20);
+    --good-text: #4bcf4b;
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   }
 }
@@ -53,7 +57,7 @@ body {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 12px;
-  padding: 14px 24px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--surface-1);
   position: sticky;
@@ -67,7 +71,7 @@ body {
 .app-controls { display: flex; align-items: center; gap: 14px; }
 .currency-label { font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
 
-main { max-width: 1200px; margin: 0 auto; padding: 20px 24px 60px; }
+main { max-width: 1400px; margin: 0 auto; padding: 20px 16px 60px; }
 
 section { margin-bottom: 36px; }
 section h2 { font-size: 18px; margin: 0 0 4px; }
@@ -107,11 +111,12 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1
 /* ---------- pack cards ---------- */
 .pack-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 16px;
 }
 
 .pack-card {
+  position: relative;
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-top: 3px solid var(--accent);
@@ -122,11 +127,48 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1
   flex-direction: column;
   gap: 8px;
 }
+.pack-card.dragging { opacity: 0.4; }
+.pack-card.drop-before { box-shadow: inset 3px 0 0 0 var(--accent); }
+.pack-card.drop-after { box-shadow: inset -3px 0 0 0 var(--accent); }
 
-.pack-card header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.pack-card h3 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
-.pack-config { font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; }
-.pack-meta { margin: 0; font-size: 13px; color: var(--text-muted); }
+.drag-handle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 2px 5px;
+  border-radius: 6px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: grab;
+  opacity: 0.5;
+  user-select: none;
+}
+.drag-handle:hover { opacity: 1; background: var(--page); }
+.drag-handle:active { cursor: grabbing; }
+
+/* Fixed-height top block so every spec row aligns across cards. */
+.pack-name {
+  margin: 0;
+  padding-right: 26px;             /* clear the drag handle */
+  font-size: 16px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;          /* name wraps to at most 2 lines */
+  line-clamp: 2;
+  overflow: hidden;
+  min-height: 2.5em;              /* always reserve 2 lines */
+}
+.pack-config, .pack-meta {
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pack-config { font-size: 12.5px; color: var(--text-secondary); }
+.pack-meta { font-size: 13px; color: var(--text-muted); }
 
 .pack-specs {
   display: grid;
@@ -151,11 +193,16 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1
   padding-top: 8px;
   border-top: 1px solid var(--border);
 }
-.compare-toggle {
-  display: flex; align-items: center; gap: 4px;
-  font-size: 13px; cursor: pointer; margin-right: auto;
+.ref-btn { margin-right: auto; }
+.reference-badge {
+  margin-right: auto;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12.5px; font-weight: 600;
+  color: var(--accent); cursor: pointer;
+  padding: 4px 8px; border-radius: 8px;
+  border: 1px solid var(--accent);
 }
-.compare-toggle input { width: auto; accent-color: var(--accent); }
+.reference-badge:hover { background: var(--good-wash); filter: none; }
 
 /* ---------- comparison table ---------- */
 .table-wrap { overflow-x: auto; }
@@ -182,9 +229,18 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1
 }
 #compare-table tbody tr:last-child td { border-bottom: none; }
 
-.winner-cell { background: var(--good-wash); font-weight: 600; }
-.winner-pct { color: var(--text-secondary); font-size: 12.5px; margin-left: 6px; }
-.neutral-cell { color: var(--text-muted); }
+.better-cell { background: var(--good-wash); }
+.worse-cell { background: var(--bad-wash); }
+.ref-col { background: rgba(42, 120, 214, 0.07); font-weight: 600; }
+#compare-table thead th.ref-col { border-bottom-color: var(--accent); }
+.ref-tag {
+  display: block; font-weight: 400; font-size: 11px;
+  color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em;
+}
+.delta { font-size: 12.5px; }
+.delta.better { color: var(--good-text); }
+.delta.worse { color: var(--danger); }
+.delta.neutral { color: var(--text-muted); }
 
 /* ---------- chart ---------- */
 .chart-host {

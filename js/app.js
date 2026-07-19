@@ -7,30 +7,81 @@
   const state = {
     packs: [],        // pack: {id, slot, name, s, p, chemistry, size, diameter, height, plen, pwid, phei, capacity, current, weight, price}
     positions: {},    // packId → {x, y} mm on the canvas
-    compareIds: [],   // up to 2 pack ids
+    referenceId: null,// the reference pack all others are compared against
     currency: "€"
   };
 
   let editingId = null;
+  let dragId = null;    // id of the pack card currently being dragged for reordering
 
   /* ---------- persistence ---------- */
+  function snapshot() {
+    return {
+      version: 1,
+      packs: state.packs,
+      positions: state.positions,
+      referenceId: state.referenceId,
+      currency: state.currency
+    };
+  }
+
+  // Apply a loaded/imported blob onto state. Returns true on success.
+  function applyData(data) {
+    if (!data || !Array.isArray(data.packs)) return false;
+    state.packs = data.packs;
+    state.positions = data.positions || {};
+    state.referenceId = state.packs.some(p => p.id === data.referenceId) ? data.referenceId : null;
+    state.currency = data.currency || "€";
+    return true;
+  }
+
   function save() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      packs: state.packs, positions: state.positions,
-      compareIds: state.compareIds, currency: state.currency
-    }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot()));
   }
 
   function load() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
-      const data = JSON.parse(raw);
-      state.packs = Array.isArray(data.packs) ? data.packs : [];
-      state.positions = data.positions || {};
-      state.compareIds = (data.compareIds || []).filter(id => state.packs.some(p => p.id === id));
-      state.currency = data.currency || "€";
+      applyData(JSON.parse(raw));
     } catch { /* corrupted state — start fresh */ }
+  }
+
+  /* ---------- file export / import ---------- */
+  function exportToFile() {
+    const blob = new Blob([JSON.stringify(snapshot(), null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `wattsup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function importFromFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      let data;
+      try { data = JSON.parse(reader.result); }
+      catch { alert("Could not import: that file isn’t valid JSON."); return; }
+
+      if (!data || !Array.isArray(data.packs)) {
+        alert("Could not import: the file isn’t a valid WattsUp export.");
+        return;
+      }
+      if (state.packs.length &&
+          !confirm("Importing will replace your current packs and settings. Continue?")) return;
+
+      applyData(data);
+      document.getElementById("currency-select").value = state.currency;
+      save();
+      renderAll();
+      if (state.packs.length > 0) TopView.fit();
+    };
+    reader.onerror = () => alert("Could not read the file.");
+    reader.readAsText(file);
   }
 
   /* ---------- theming / colors ---------- */
@@ -144,6 +195,36 @@
   });
 
   /* ---------- pack cards ---------- */
+  // Human-readable cell size for a pack (name for standard sizes, dimensions for custom).
+  function cellSizeText(pack) {
+    if (!pack.size) return "—";
+    const size = CELL_SIZES[pack.size];
+    if (!size) return "—";
+    if (size.type === "cyl") return size.label;
+    if (size.type === "custom-cyl") {
+      return (pack.diameter && pack.height)
+        ? `⌀${fmt(pack.diameter, 1)} × ${fmt(pack.height, 1)} mm`
+        : "Custom cylindrical";
+    }
+    if (size.type === "prismatic") {
+      return (pack.plen && pack.pwid && pack.phei)
+        ? `${fmt(pack.plen, 1)} × ${fmt(pack.pwid, 1)} × ${fmt(pack.phei, 1)} mm`
+        : "Prismatic / pouch";
+    }
+    return "—";
+  }
+
+  // Compact cell-format token for the card's second line ("18650", "Custom cyl", "Prismatic").
+  function cellFormatShort(pack) {
+    if (!pack.size) return null;
+    const size = CELL_SIZES[pack.size];
+    if (!size) return null;
+    if (size.type === "cyl") return pack.size;
+    if (size.type === "custom-cyl") return "Custom cyl";
+    if (size.type === "prismatic") return "Prismatic";
+    return null;
+  }
+
   function specRow(label, value) {
     const dt = document.createElement("dt");
     dt.textContent = label;
@@ -162,22 +243,26 @@
       const card = document.createElement("article");
       card.className = "pack-card";
       card.style.borderTopColor = packColor(pack);
+      card.dataset.packId = pack.id;
+      wireCardDrag(card, pack);
 
-      const head = document.createElement("header");
       const nameEl = document.createElement("h3");
+      nameEl.className = "pack-name";
       nameEl.textContent = pack.name;
-      const config = document.createElement("span");
+      nameEl.title = pack.name;
+      card.appendChild(nameEl);
+
+      const config = document.createElement("p");
       config.className = "pack-config";
-      config.textContent = `${pack.s}S${pack.p}P · ${m.cells} cells`;
-      head.append(nameEl, config);
-      card.appendChild(head);
+      const configText = [cellFormatShort(pack), `${pack.s}S${pack.p}P`, `${m.cells} cells`]
+        .filter(Boolean).join(" · ");
+      config.textContent = configText;
+      config.title = configText;
+      card.appendChild(config);
 
       const meta = document.createElement("p");
       meta.className = "pack-meta";
-      meta.textContent = [
-        m.chem ? m.chem.label : "chemistry —",
-        pack.size ? CELL_SIZES[pack.size].label.replace("…", "") : null
-      ].filter(Boolean).join(" · ");
+      meta.textContent = m.chem ? m.chem.label : "chemistry —";
       card.appendChild(meta);
 
       const dl = document.createElement("dl");
@@ -189,7 +274,8 @@
         ["Max current", fmtUnit(m.maxCurrentA, "A", 0)],
         ["Max power", fmtUnit(m.maxPowerW, "W", 0)],
         ["Weight", fmtUnit(m.weightKg, "kg", 2)],
-        ["Size", m.geo ? `${fmt(m.geo.width, 0)}×${fmt(m.geo.length, 0)}×${fmt(m.geo.height, 0)} mm` : "—"],
+        ["Cell size", cellSizeText(pack)],
+        ["Pack size", m.geo ? `${fmt(m.geo.width, 0)}×${fmt(m.geo.length, 0)}×${fmt(m.geo.height, 0)} mm` : "—"],
         ["Volume", m.geo ? `${fmt(m.geo.volumeL, 2)} L` : "—"],
         ["Energy density", m.whPerKg !== null ? `${fmt(m.whPerKg, 0)} Wh/kg` : "—"],
         ["Price", m.price !== null ? `${state.currency}${fmt(m.price, 2)}` : "—"]
@@ -210,13 +296,24 @@
       const actions = document.createElement("div");
       actions.className = "card-actions";
 
-      const cmpLabel = document.createElement("label");
-      cmpLabel.className = "compare-toggle";
-      const cmp = document.createElement("input");
-      cmp.type = "checkbox";
-      cmp.checked = state.compareIds.includes(pack.id);
-      cmp.addEventListener("change", () => toggleCompare(pack.id));
-      cmpLabel.append(cmp, document.createTextNode(" Compare"));
+      let refControl;
+      if (state.referenceId === pack.id) {
+        refControl = document.createElement("span");
+        refControl.className = "reference-badge";
+        refControl.textContent = "★ Reference";
+        refControl.title = "This pack is the comparison reference. Click to clear.";
+        refControl.setAttribute("role", "button");
+        refControl.tabIndex = 0;
+        refControl.addEventListener("click", () => setReference(null));
+        refControl.addEventListener("keydown", ev => {
+          if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); setReference(null); }
+        });
+      } else {
+        refControl = document.createElement("button");
+        refControl.className = "btn btn-small ref-btn";
+        refControl.textContent = "Set as reference";
+        refControl.addEventListener("click", () => setReference(pack.id));
+      }
 
       const editBtn = document.createElement("button");
       editBtn.className = "btn btn-small";
@@ -235,10 +332,78 @@
         if (confirm(`Delete pack "${pack.name}"?`)) deletePack(pack.id);
       });
 
-      actions.append(cmpLabel, editBtn, dupBtn, delBtn);
+      actions.append(refControl, editBtn, dupBtn, delBtn);
       card.appendChild(actions);
       list.appendChild(card);
     }
+  }
+
+  /* ---------- drag-to-reorder ---------- */
+  function clearDropMarkers() {
+    document.querySelectorAll(".pack-card.drop-before, .pack-card.drop-after")
+      .forEach(el => el.classList.remove("drop-before", "drop-after"));
+  }
+
+  // Where would a drop land relative to this card? true = before, false = after.
+  function dropIsBefore(card, ev) {
+    const rect = card.getBoundingClientRect();
+    return ev.clientX < rect.left + rect.width / 2;
+  }
+
+  function wireCardDrag(card, pack) {
+    const handle = document.createElement("span");
+    handle.className = "drag-handle";
+    handle.textContent = "⠿";
+    handle.title = "Drag to reorder";
+    handle.setAttribute("aria-label", "Drag to reorder");
+    handle.draggable = true;
+
+    handle.addEventListener("dragstart", ev => {
+      dragId = pack.id;
+      ev.dataTransfer.effectAllowed = "move";
+      ev.dataTransfer.setData("text/plain", pack.id);   // Firefox needs data to start a drag
+      ev.dataTransfer.setDragImage(card, 20, 20);
+      card.classList.add("dragging");
+    });
+    handle.addEventListener("dragend", () => {
+      dragId = null;
+      card.classList.remove("dragging");
+      clearDropMarkers();
+    });
+    card.appendChild(handle);
+
+    card.addEventListener("dragover", ev => {
+      if (dragId === null || dragId === pack.id) return;
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = "move";
+      const before = dropIsBefore(card, ev);
+      card.classList.toggle("drop-before", before);
+      card.classList.toggle("drop-after", !before);
+    });
+    card.addEventListener("dragleave", () => {
+      card.classList.remove("drop-before", "drop-after");
+    });
+    card.addEventListener("drop", ev => {
+      if (dragId === null || dragId === pack.id) return;
+      ev.preventDefault();
+      const before = dropIsBefore(card, ev);
+      const draggedId = dragId;
+      dragId = null;
+      movePack(draggedId, pack.id, before);
+    });
+  }
+
+  function movePack(draggedId, targetId, before) {
+    if (draggedId === targetId) return;
+    const from = state.packs.findIndex(p => p.id === draggedId);
+    if (from < 0) return;
+    const [moved] = state.packs.splice(from, 1);
+    let to = state.packs.findIndex(p => p.id === targetId);
+    if (to < 0) { state.packs.splice(from, 0, moved); return; }  // target gone — undo
+    if (!before) to += 1;
+    state.packs.splice(to, 0, moved);
+    save();
+    renderAll();
   }
 
   function duplicatePack(pack) {
@@ -256,18 +421,13 @@
   function deletePack(id) {
     state.packs = state.packs.filter(p => p.id !== id);
     delete state.positions[id];
-    state.compareIds = state.compareIds.filter(x => x !== id);
+    if (state.referenceId === id) state.referenceId = null;
     save();
     renderAll();
   }
 
-  function toggleCompare(id) {
-    if (state.compareIds.includes(id)) {
-      state.compareIds = state.compareIds.filter(x => x !== id);
-    } else {
-      state.compareIds.push(id);
-      if (state.compareIds.length > 2) state.compareIds.shift();  // keep the two most recent
-    }
+  function setReference(id) {
+    state.referenceId = id;
     save();
     renderAll();
   }
@@ -297,91 +457,83 @@
     const table = document.getElementById("compare-table");
     table.textContent = "";
 
-    const selected = state.compareIds
-      .map(id => state.packs.find(p => p.id === id))
-      .filter(Boolean);
-
     if (state.packs.length < 2) { section.hidden = true; return; }
     section.hidden = false;
 
-    if (selected.length !== 2) {
-      hint.textContent = "Tick “Compare” on two packs to see them side by side.";
+    const reference = state.packs.find(p => p.id === state.referenceId);
+    if (!reference) {
+      hint.textContent = "Click “Set as reference” on a pack to compare every other pack against it.";
       return;
     }
-    hint.textContent = "";
+    const others = state.packs.filter(p => p.id !== reference.id);
+    hint.textContent = `Every pack compared against the reference — ${reference.name}. Percentages are each pack relative to the reference; green is better, red is worse.`;
 
-    const [pa, pb] = selected;
-    const ma = computePack(pa), mb = computePack(pb);
+    const cols = [reference, ...others];
+    const metricsByPack = new Map(cols.map(p => [p.id, computePack(p)]));
 
+    // ----- header -----
     const thead = document.createElement("thead");
     const hr = document.createElement("tr");
-    const cells = ["Metric", pa.name, pb.name, "Winner"];
-    cells.forEach((txt, i) => {
+    hr.appendChild(Object.assign(document.createElement("th"), { textContent: "Metric" }));
+    cols.forEach((p, i) => {
       const th = document.createElement("th");
-      if (i === 1 || i === 2) {
-        const key = document.createElement("span");
-        key.className = "legend-key";
-        key.style.background = packColor(i === 1 ? pa : pb);
-        th.append(key, document.createTextNode(" " + txt));
-      } else {
-        th.textContent = txt;
+      if (i === 0) th.className = "ref-col";
+      const key = document.createElement("span");
+      key.className = "legend-key";
+      key.style.background = packColor(p);
+      th.append(key, document.createTextNode(" " + p.name));
+      if (i === 0) {
+        const tag = document.createElement("span");
+        tag.className = "ref-tag";
+        tag.textContent = "reference";
+        th.appendChild(tag);
       }
       hr.appendChild(th);
     });
     thead.appendChild(hr);
     table.appendChild(thead);
 
+    const fmtVal = (metric, v) => {
+      if (v === null || v === undefined) return "—";
+      if (metric.text) return v;
+      const num = fmt(v, metric.digits);
+      return metric.currency ? `${state.currency}${num}${metric.unit}`
+        : (metric.unit ? `${num} ${metric.unit}` : num);
+    };
+
+    // ----- body -----
     const tbody = document.createElement("tbody");
     for (const metric of COMPARE_METRICS) {
-      const va = metric.get(ma);
-      const vb = metric.get(mb);
-      if ((va === null || va === undefined) && (vb === null || vb === undefined)) continue;
+      const values = cols.map(p => metric.get(metricsByPack.get(p.id)));
+      if (values.every(v => v === null || v === undefined)) continue;
 
       const tr = document.createElement("tr");
-      const tdLabel = document.createElement("td");
-      tdLabel.textContent = metric.label;
-      tr.appendChild(tdLabel);
+      tr.appendChild(Object.assign(document.createElement("td"), { textContent: metric.label }));
 
-      const fmtVal = v => {
-        if (v === null || v === undefined) return "—";
-        if (metric.text) return v;
-        const num = fmt(v, metric.digits);
-        return metric.currency ? `${state.currency}${num}${metric.unit}` : (metric.unit ? `${num} ${metric.unit}` : num);
-      };
+      const refVal = values[0];
+      values.forEach((v, i) => {
+        const td = document.createElement("td");
+        td.appendChild(document.createTextNode(fmtVal(metric, v)));
 
-      const tdA = document.createElement("td");
-      tdA.textContent = fmtVal(va);
-      const tdB = document.createElement("td");
-      tdB.textContent = fmtVal(vb);
-      const tdW = document.createElement("td");
-
-      if (!metric.text && metric.direction && va !== null && vb !== null && va !== vb) {
-        const aWins = metric.direction === "higher" ? va > vb : va < vb;
-        const winner = aWins ? pa : pb;
-        const [wv, lv] = aWins ? [va, vb] : [vb, va];
-        // winner relative to loser: +28% more energy / −16.9% less weight
-        const pct = ((wv - lv) / lv) * 100;
-        (aWins ? tdA : tdB).classList.add("winner-cell");
-        const key = document.createElement("span");
-        key.className = "legend-key";
-        key.style.background = packColor(winner);
-        tdW.append(key, document.createTextNode(` ${winner.name} `));
-        const pctEl = document.createElement("span");
-        pctEl.className = "winner-pct";
-        pctEl.textContent = `${pct >= 0 ? "+" : "−"}${fmt(Math.abs(pct), 1)}%`;
-        tdW.appendChild(pctEl);
-      } else if (!metric.text && metric.direction === null) {
-        tdW.textContent = "·";
-        tdW.className = "neutral-cell";
-      } else if (!metric.text && va !== null && vb !== null && va === vb) {
-        tdW.textContent = "tie";
-        tdW.className = "neutral-cell";
-      } else {
-        tdW.textContent = "—";
-        tdW.className = "neutral-cell";
-      }
-
-      tr.append(tdA, tdB, tdW);
+        if (i === 0) {                       // the reference column itself
+          td.classList.add("ref-col");
+        } else if (!metric.text && typeof v === "number" &&
+                   typeof refVal === "number" && refVal !== 0) {
+          const pct = ((v - refVal) / refVal) * 100;
+          const delta = document.createElement("span");
+          delta.className = "delta";
+          if (metric.direction && v !== refVal) {
+            const better = metric.direction === "higher" ? v > refVal : v < refVal;
+            td.classList.add(better ? "better-cell" : "worse-cell");
+            delta.classList.add(better ? "better" : "worse");
+          } else {
+            delta.classList.add("neutral");   // no winner direction, or exactly equal
+          }
+          delta.textContent = ` ${pct >= 0 ? "+" : "−"}${fmt(Math.abs(pct), 1)}%`;
+          td.appendChild(delta);
+        }
+        tr.appendChild(td);
+      });
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);
@@ -425,6 +577,14 @@
       state.currency = currencySelect.value;
       save();
       renderAll();
+    });
+
+    document.getElementById("export-btn").addEventListener("click", exportToFile);
+    const importFile = document.getElementById("import-file");
+    document.getElementById("import-btn").addEventListener("click", () => importFile.click());
+    importFile.addEventListener("change", () => {
+      if (importFile.files[0]) importFromFile(importFile.files[0]);
+      importFile.value = "";   // allow re-importing the same file
     });
 
     TopView.init(document.getElementById("top-canvas"), positions => {
