@@ -1,12 +1,12 @@
 # ⚡ WattsUp
 
-A browser-based tool to **dimension, calculate, and compare battery cell packs** — and to size the nickel strips that connect the cells.
+A browser-based tool to **dimension, calculate, and compare battery cell packs** — size the nickel strips that connect the cells, and plan which of your real, measured cells goes where.
 
-Define battery packs by their series/parallel configuration and cell parameters, and WattsUp calculates every derivable pack spec, compares packs side by side, plots typical discharge curves, and draws each pack to scale so you can see them next to each other. A second tab, **Pack Connections**, sizes the interconnect strips: it solves the actual resistor network of a series junction and shows the current in every bridge as animated particle flows.
+Define battery packs by their series/parallel configuration and cell parameters, and WattsUp calculates every derivable pack spec, compares packs side by side, plots typical discharge curves, and draws each pack to scale so you can see them next to each other. A second tab, **Pack Connections**, sizes the interconnect strips: it solves the actual resistor network of a series junction and shows the current in every bridge as animated particle flows. A third tab, **Cell Management**, imports CSV logs from a battery analyzer, discards the odd cells out, and balances the rest into the pack's parallel groups.
 
 ## Features
 
-The app has two tabs: **Pack Planner** (pack design & comparison) and **Pack Connections** (interconnect strip sizing).
+The app has three tabs: **Pack Planner** (pack design & comparison), **Pack Connections** (interconnect strip sizing), and **Cell Management** (building the pack from real, measured cells).
 
 ### Pack Planner
 
@@ -30,6 +30,15 @@ The app has two tabs: **Pack Planner** (pack design & comparison) and **Pack Con
 - **Results & warnings** — per-cell current, worst-case utilisation of group bridges / series bridges / output strip, suggested minimum widths, interconnect resistance, voltage drop, and power loss (per junction and for the whole pack). Clear warnings when any strip runs near or over its limit.
 - **Pack link** — copy S, P, max current, and cell pitch straight from any Pack Planner pack.
 
+### Cell Management
+
+- **CSV import by drag & drop** — grade your cells with a battery charger/analyzer (built for the SkyRC MC5000) and drop the log files onto the tab. Name each file after the cells in its slots — `1-4.csv`, `5-8.csv`, … — and slot 1…4 maps to your real cell numbers. The parser auto-detects delimiter, columns, and units, and understands both row-per-slot and per-slot-column layouts.
+- **Cell inventory** — capacity, internal resistance, end voltage, and source file per cell, with stats for the whole batch. Untick any cell to exclude it by hand; re-dropping a file updates its cells.
+- **Automatic selection** — test more cells than the pack needs: internal-resistance outliers and the lowest-capacity cells are discarded first, each with a stated reason.
+- **Balanced build plan** — the kept cells are distributed into S parallel groups of P with near-equal group capacities, and drawn as a build map: the number in each position is the real cell to weld there. The weakest group (which sets the pack capacity) is highlighted.
+- **Pack estimates** — real pack capacity, energy, group spread, and pack internal resistance, from your measured cells rather than datasheet values.
+- **Try it** — the `data/` folder contains 25 simulated MC5000 logs (100 cells, a few duds included) to play with.
+
 ## Running it
 
 No build step and no dependencies. Either:
@@ -49,10 +58,14 @@ No build step and no dependencies. Either:
 | `js/chart.js` | Discharge-curve chart |
 | `js/canvas.js` | To-scale top-view canvas |
 | `js/strips.js` | Pack Connections tab: inputs, SVG diagram, particle animation |
+| `js/cells.js` | Cell Management tab: CSV import, inventory, build plan |
 | `js/app.js` | App state, tabs, UI, and persistence |
+| `data/` | Simulated charger logs (100 dummy cells) for trying Cell Management |
 
 ## Notes
 
 Discharge curves are **indicative** — they are derived from typical chemistry curves at moderate load, not measured cell data. Real behaviour depends on load, temperature, and cell quality.
 
 Strip current limits are **conservative rules of thumb** for welded strip inside a pack with limited cooling (resistivity at 20 °C), meant as design guidance rather than physical maxima. Interconnect currents assume balanced cells that share the load equally.
+
+The Cell Management CSV parser is written to be tolerant of format variations, but it has not yet been validated against a real MC5000 log file — if yours doesn't import, open an issue with a sample.

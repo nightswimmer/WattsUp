@@ -435,6 +435,115 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1
 .strip-warning.near { background: rgba(201, 133, 0, 0.14); border: 1px solid rgba(201, 133, 0, 0.5); }
 .strip-warning.over { background: var(--bad-wash); border: 1px solid var(--danger); color: var(--danger); font-weight: 600; }
 
+/* ---------- cell management ---------- */
+.cell-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 26px 16px;
+  border: 2px dashed var(--axis-line);
+  border-radius: 12px;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+}
+.cell-dropzone span { font-size: 13px; color: var(--text-muted); }
+.cell-dropzone:hover, .cell-dropzone:focus-visible { border-color: var(--accent); }
+.cell-dropzone.dragover {
+  border-color: var(--accent);
+  border-style: solid;
+  background: rgba(42, 120, 214, 0.08);
+}
+
+.cell-import-log {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  font-size: 13px;
+}
+.cell-import-log li { padding: 1px 0; }
+.cell-import-log .import-ok { color: var(--good-text); }
+.cell-import-log .import-ok strong, .cell-import-log .import-err strong { color: var(--text-primary); }
+.cell-import-log .import-err { color: var(--danger); }
+.cell-import-log .import-warn { color: var(--text-muted); }
+
+.cells-layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  margin-top: 18px;
+}
+@media (max-width: 900px) {
+  .cells-layout { grid-template-columns: 1fr; }
+}
+.cells-layout .strip-results-title:first-child { margin-top: 0; }
+
+.cell-layout-wrap {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow-x: auto;
+  padding: 10px 6px;
+}
+#cell-layout { width: max-content; margin: 0 auto; }
+
+.cellm-svg .cellm-cell { fill: var(--accent); }
+.cellm-svg .cellm-id {
+  fill: var(--accent-ink);
+  font: 700 13px system-ui, sans-serif;
+  pointer-events: none;
+}
+.cellm-svg .cellm-cap {
+  fill: var(--text-secondary);
+  font: 11px system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.cellm-svg .cellm-group { fill: var(--text-primary); font: 600 13px system-ui, sans-serif; }
+.cellm-svg .cellm-group-sum {
+  fill: var(--text-secondary);
+  font: 12px system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.cellm-svg .cellm-group-sum.weakest { fill: #c98500; font-weight: 600; }
+.cellm-svg .cellm-chain { stroke: var(--axis-line); stroke-width: 1.5; }
+.cellm-svg .cellm-chain-dot { fill: var(--axis-line); }
+
+.cell-discarded {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+}
+.cell-discarded .muted { color: var(--text-muted); }
+
+#cell-table {
+  border-collapse: collapse;
+  width: 100%;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13.5px;
+}
+#cell-table th, #cell-table td {
+  padding: 6px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--grid-line);
+}
+#cell-table td:nth-child(n+2):nth-child(-n+5) { font-variant-numeric: tabular-nums; }
+#cell-table thead th {
+  color: var(--text-secondary);
+  font-weight: 600;
+  border-bottom: 1px solid var(--axis-line);
+}
+#cell-table tbody tr:last-child td { border-bottom: none; }
+#cell-table input[type="checkbox"] { width: auto; }
+#cell-table .cell-excluded td { color: var(--text-muted); }
+#cell-table .assign-group { color: var(--accent); font-weight: 600; }
+#cell-table .assign-out { color: var(--text-muted); }
+
 /* ---------- dialog ---------- */
 dialog {
   border: 1px solid var(--border);

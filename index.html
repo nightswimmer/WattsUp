@@ -16,6 +16,7 @@
     <nav class="tab-bar" role="tablist">
       <button class="tab-btn active" id="tab-btn-planner" role="tab" aria-selected="true" aria-controls="tab-planner">Pack Planner</button>
       <button class="tab-btn" id="tab-btn-connections" role="tab" aria-selected="false" aria-controls="tab-connections">Pack Connections</button>
+      <button class="tab-btn" id="tab-btn-cells" role="tab" aria-selected="false" aria-controls="tab-cells">Cell Management</button>
     </nav>
     <div class="app-controls">
       <label class="currency-label">Currency
@@ -154,6 +155,69 @@
       </div>
     </section>
    </div>
+
+   <div id="tab-cells" role="tabpanel" hidden>
+    <section id="cells-section">
+      <h2>Cell management</h2>
+      <p class="section-hint">
+        Grade your real cells with a battery analyzer (SkyRC MC5000) and let WattsUp plan the pack build.
+        Drop the charger's CSV logs below — name each file after the cells in its four slots, e.g.
+        <strong>1-4.csv</strong>, <strong>5-8.csv</strong>, so slot 1…4 maps to your real cell numbers.
+        Test more cells than the pack needs: the odd ones out (weak capacity, high internal resistance)
+        are discarded automatically, the rest are balanced into S parallel groups of equal capacity.
+        Pack capacity is set by the weakest group.
+      </p>
+
+      <div id="cell-dropzone" class="cell-dropzone" tabindex="0" role="button"
+           aria-label="Drop charger CSV log files here, or press Enter to browse">
+        <strong>Drop your charger CSV logs here</strong>
+        <span>…or click to browse. You can drop many files at once; re-dropping a file replaces those cells.</span>
+      </div>
+      <input type="file" id="cell-files" accept=".csv,text/csv" multiple hidden>
+      <ul id="cell-import-log" class="cell-import-log"></ul>
+
+      <p id="cells-empty" class="empty-hint">No cells yet. Drop your first CSV log above to build the inventory.</p>
+
+      <div id="cells-main" class="cells-layout" hidden>
+        <form class="cell-controls strip-controls" onsubmit="return false">
+          <div class="form-grid">
+            <label class="span2">Load config from pack
+              <select id="m-from-pack" title="Copy S, P and nominal voltage from a Pack Planner pack"></select>
+            </label>
+            <label>Series groups (S)
+              <input type="number" id="m-s" min="1" max="100" step="1">
+            </label>
+            <label>Parallel cells (P)
+              <input type="number" id="m-p" min="1" max="100" step="1">
+            </label>
+            <label class="span2">Nominal cell voltage (V)
+              <input type="number" id="m-vnom" min="0.5" max="5" step="0.1"
+                     title="Only used for the pack energy estimate">
+            </label>
+            <button type="button" id="m-clear" class="btn btn-danger span2">Clear all cells</button>
+          </div>
+          <h3 class="strip-results-title">Inventory stats</h3>
+          <dl id="cell-stats" class="strip-results"></dl>
+        </form>
+
+        <div class="cells-results">
+          <p id="cell-warnings" class="strip-warning" hidden></p>
+          <h3 class="strip-results-title">Suggested build</h3>
+          <dl id="cell-results" class="strip-results"></dl>
+          <h3 class="strip-results-title">Pack layout — which cell goes where</h3>
+          <p class="section-hint">Each row is one parallel group; the groups are wired in series, top to bottom.
+            The number inside each cell is your real cell number; below it, its measured capacity in mAh.</p>
+          <div class="cell-layout-wrap"><div id="cell-layout"></div></div>
+          <details id="cell-discarded-details" class="table-details" hidden>
+            <summary>Cells left out of the pack</summary>
+            <ul id="cell-discarded" class="cell-discarded"></ul>
+          </details>
+          <h3 class="strip-results-title">Cell inventory</h3>
+          <div class="table-wrap"><table id="cell-table"></table></div>
+        </div>
+      </div>
+    </section>
+   </div>
   </main>
 
   <!-- Add / edit pack dialog -->
@@ -232,6 +296,7 @@
   <script src="js/chart.js"></script>
   <script src="js/canvas.js"></script>
   <script src="js/strips.js"></script>
+  <script src="js/cells.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

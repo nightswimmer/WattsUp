@@ -280,6 +280,313 @@ function gaussSolve(A, b) {
   return x;
 }
 
+/* ================================================================
+   Cell Management — charger-log parsing and pack grouping.
+   All functions are pure (no DOM) so they can be unit-tested in Node.
+   ================================================================ */
+
+/** Median of a non-empty numeric array. */
+function median(values) {
+  const s = [...values].sort((a, b) => a - b);
+  const mid = s.length >> 1;
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+/** Scaled median absolute deviation (robust stand-in for the std deviation). */
+function medianAbsDev(values, med = median(values)) {
+  return 1.4826 * median(values.map(v => Math.abs(v - med)));
+}
+
+/**
+ * Map a charger-log filename to real cell numbers.
+ * "1-4.csv" → {start:1, end:4}; "cells 5-8 (retest).csv" → {start:5, end:8};
+ * "12.csv" → {start:12, end:12}. Returns null when no number is found.
+ */
+function cellRangeFromFilename(name) {
+  const base = String(name).replace(/\.[^.]*$/, "");
+  const ranges = [...base.matchAll(/(\d+)\s*[-–_]\s*(\d+)/g)];
+  if (ranges.length) {
+    const m = ranges[ranges.length - 1];
+    const a = parseInt(m[1], 10), b = parseInt(m[2], 10);
+    if (a > 0 && b >= a) return { start: a, end: b };
+  }
+  const single = base.match(/(\d+)(?!.*\d)/);
+  if (single) {
+    const n = parseInt(single[1], 10);
+    if (n > 0) return { start: n, end: n };
+  }
+  return null;
+}
+
+/**
+ * Parse a charger/analyzer CSV log (written for the SkyRC MC5000, but
+ * deliberately tolerant: delimiter, header row and column layout are
+ * auto-detected, units converted from header hints).
+ *
+ * Understands two shapes:
+ *   - long: one row per sample with a Slot/Channel column
+ *   - wide: per-slot numbered columns ("Voltage1", "Slot 2 Capacity(mAh)", …)
+ * A file with neither is treated as a single-slot log.
+ *
+ * Returns { slots: [{slot, capacity, ir, vEnd, samples}], warnings: [] }
+ *   capacity — final capacity in mAh (max of the accumulating column)
+ *   ir       — median internal resistance in mΩ, or null
+ *   vEnd     — last logged voltage in V, or null
+ * Throws Error with a friendly message when the file can't be understood.
+ */
+function parseCellCsv(text) {
+  const warnings = [];
+  const lines = String(text).replace(/^﻿/, "").split(/\r\n|\r|\n/);
+
+  // -- locate the header row and the delimiter that splits it best --
+  const KNOWN = /(slot|channel|\bbay\b|volt|curr|\bcap|m?ah\b|time|elapsed|resist|m?ohm|\bir\b|temp|mode|status)/i;
+  let best = null;   // {line, delim, score}
+  const delims = [",", ";", "\t"];
+  for (let i = 0; i < Math.min(lines.length, 40); i++) {
+    if (!lines[i].trim()) continue;
+    for (const d of delims) {
+      const cells = lines[i].split(d);
+      if (cells.length < 2) continue;
+      const score = cells.filter(c => KNOWN.test(c)).length;
+      if (score >= 2 && (!best || score > best.score)) best = { line: i, delim: d, score };
+    }
+  }
+  if (!best) throw new Error("no recognizable header row (expected columns like Slot, Voltage, Capacity)");
+
+  const delim = best.delim;
+  const header = lines[best.line].split(delim).map(h => h.trim());
+  const lower = header.map(h => h.toLowerCase());
+
+  // -- map columns --
+  const findCol = re => lower.findIndex(h => re.test(h));
+  const col = {
+    slot: findCol(/^(slot|channel|ch\b|bay)/),
+    voltage: findCol(/volt|^u\s*[(\[]|^v\s*[(\[]/),
+    current: findCol(/current|^i\s*[(\[]|amps?\b/),
+    capacity: findCol(/\bcap|m?ah\b/),
+    ir: findCol(/resist|m?ohm|\bir\b/),
+  };
+
+  // unit hints from the header text
+  const unit = (i, re) => i >= 0 && re.test(lower[i]);
+  const mV = unit(col.voltage, /\bmv\b|\(mv\)/);
+  const ahOnly = unit(col.capacity, /\(ah\)|\bah\b/) && !unit(col.capacity, /mah/);
+  const ohmOnly = unit(col.ir, /\(ohm|\bohms?\b/) && !unit(col.ir, /mohm|mΩ/);
+
+  // -- wide format? per-slot numbered columns --
+  const wide = new Map();   // slot → {voltage, capacity, ir}
+  if (col.slot < 0) {
+    lower.forEach((h, i) => {
+      let m = h.match(/^(?:slot|channel|ch|bay)\s*#?\s*(\d+)/);
+      let slot = m ? parseInt(m[1], 10) : null;
+      if (slot === null) {
+        m = h.match(/(\d+)\s*(?:[(\[][^)\]]*[)\]])?\s*$/);   // "voltage1", "capacity2(mah)"
+        if (m && /volt|cap|curr|resist|ir\b/.test(h)) slot = parseInt(m[1], 10);
+      }
+      if (slot === null || slot < 1 || slot > 32) return;
+      const entry = wide.get(slot) || {};
+      if (/volt/.test(h) && entry.voltage === undefined) entry.voltage = i;
+      if (/cap|m?ah\b/.test(h) && entry.capacity === undefined) entry.capacity = i;
+      if (/resist|m?ohm|\bir\b/.test(h) && entry.ir === undefined) entry.ir = i;
+      wide.set(slot, entry);
+    });
+    for (const [slot, entry] of wide) {
+      if (entry.capacity === undefined && entry.voltage === undefined) wide.delete(slot);
+    }
+  }
+
+  if (col.slot < 0 && wide.size === 0 && col.capacity < 0) {
+    throw new Error("no capacity column found (expected something like Capacity(mAh))");
+  }
+
+  // -- collect samples per slot --
+  const slots = new Map();  // slot → {caps: [], irs: [], volts: [], samples: 0}
+  const bucket = slot => {
+    if (!slots.has(slot)) slots.set(slot, { caps: [], irs: [], volts: [], samples: 0 });
+    return slots.get(slot);
+  };
+  const num = v => {
+    if (v === undefined) return null;
+    const n = parseFloat(String(v).replace(",", "."));
+    return Number.isFinite(n) ? n : null;
+  };
+
+  for (let i = best.line + 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const cells = lines[i].split(delim);
+    if (wide.size > 0) {
+      for (const [slot, entry] of wide) {
+        const b = bucket(slot);
+        const cap = num(cells[entry.capacity]);
+        const v = num(cells[entry.voltage]);
+        const ir = num(cells[entry.ir]);
+        if (cap !== null) b.caps.push(cap);
+        if (v !== null) b.volts.push(v);
+        if (ir !== null && ir > 0) b.irs.push(ir);
+        if (cap !== null || v !== null) b.samples++;
+      }
+    } else {
+      const slot = col.slot >= 0 ? num(cells[col.slot]) : 1;
+      if (slot === null || !Number.isInteger(slot) || slot < 1 || slot > 32) continue;
+      const b = bucket(slot);
+      const cap = col.capacity >= 0 ? num(cells[col.capacity]) : null;
+      const v = col.voltage >= 0 ? num(cells[col.voltage]) : null;
+      const ir = col.ir >= 0 ? num(cells[col.ir]) : null;
+      if (cap === null && v === null) continue;   // footer / text row
+      if (cap !== null) b.caps.push(cap);
+      if (v !== null) b.volts.push(v);
+      if (ir !== null && ir > 0) b.irs.push(ir);
+      b.samples++;
+    }
+  }
+  if (slots.size === 0) throw new Error("a header was found but no data rows could be read");
+
+  // -- reduce each slot to a summary --
+  const out = [];
+  for (const [slot, b] of [...slots.entries()].sort((a, z) => a[0] - z[0])) {
+    let capacity = b.caps.length ? Math.max(...b.caps) : null;
+    if (capacity !== null) {
+      if (ahOnly || capacity < 20) {   // header said Ah, or values are clearly in Ah
+        capacity *= 1000;
+        if (!ahOnly) warnings.push(`slot ${slot}: capacity looked like Ah — converted to mAh`);
+      }
+    } else {
+      warnings.push(`slot ${slot}: no capacity data`);
+    }
+    let ir = b.irs.length ? median(b.irs) : null;
+    if (ir !== null && (ohmOnly || ir < 1)) ir *= 1000;
+    let vEnd = b.volts.length ? b.volts[b.volts.length - 1] : null;
+    if (vEnd !== null && (mV || vEnd > 100)) vEnd /= 1000;
+    out.push({
+      slot,
+      capacity: capacity !== null ? Math.round(capacity) : null,
+      ir: ir !== null ? Math.round(ir * 10) / 10 : null,
+      vEnd: vEnd !== null ? Math.round(vEnd * 1000) / 1000 : null,
+      samples: b.samples
+    });
+  }
+  return { slots: out, warnings };
+}
+
+/**
+ * Distribute cells over S groups of exactly P, balancing group capacity.
+ * Greedy LPT (largest first into the emptiest non-full group), then a
+ * bounded swap-refinement pass between the richest and poorest groups.
+ * Returns [{cells, sum}] — cells sorted by id inside each group.
+ */
+function balanceCellGroups(cells, s, p) {
+  const sorted = [...cells].sort((a, b) => b.capacity - a.capacity);
+  const groups = Array.from({ length: s }, () => ({ cells: [], sum: 0 }));
+  for (const c of sorted) {
+    let target = null;
+    for (const g of groups) {
+      if (g.cells.length < p && (target === null || g.sum < target.sum)) target = g;
+    }
+    target.cells.push(c);
+    target.sum += c.capacity;
+  }
+
+  // swap refinement: move capacity from the richest to the poorest group
+  for (let iter = 0; iter < 200; iter++) {
+    let hi = groups[0], lo = groups[0];
+    for (const g of groups) {
+      if (g.sum > hi.sum) hi = g;
+      if (g.sum < lo.sum) lo = g;
+    }
+    const gap = hi.sum - lo.sum;
+    if (gap < 1) break;
+    let bestSwap = null;   // swap a (rich) ↔ b (poor), ideal transfer = gap/2
+    for (const a of hi.cells) {
+      for (const b of lo.cells) {
+        const d = a.capacity - b.capacity;
+        if (d <= 0 || d >= gap) continue;          // must shrink the gap
+        const score = Math.abs(d - gap / 2);
+        if (!bestSwap || score < bestSwap.score) bestSwap = { a, b, score };
+      }
+    }
+    if (!bestSwap) break;
+    hi.cells[hi.cells.indexOf(bestSwap.a)] = bestSwap.b;
+    lo.cells[lo.cells.indexOf(bestSwap.b)] = bestSwap.a;
+    hi.sum += bestSwap.b.capacity - bestSwap.a.capacity;
+    lo.sum += bestSwap.a.capacity - bestSwap.b.capacity;
+  }
+
+  for (const g of groups) g.cells.sort((a, b) => a.id - b.id);
+  return groups;
+}
+
+/**
+ * Plan an S×P pack from a set of measured cells.
+ * Discards the surplus cells (worst first): internal-resistance outliers,
+ * then the lowest capacities. The kept cells are balanced into S parallel
+ * groups of P; pack capacity = the weakest group's sum.
+ *
+ * cells: [{id, capacity (mAh), ir (mΩ|null)}] — pre-filtered (no exclusions).
+ * Returns {ok:false, needed, available, reason} or
+ *   {ok:true, needed, groups:[{cells, sum, effIr}], discarded:[{cell, reason}],
+ *    capacityAh, groupMin, groupMax, groupMean, spreadPct, packIr}
+ */
+function planCellPack(cells, s, p) {
+  const needed = s * p;
+  const usable = cells.filter(c => Number.isFinite(c.capacity) && c.capacity > 0);
+  if (usable.length < needed) {
+    return {
+      ok: false, needed, available: usable.length,
+      reason: `the ${s}S${p}P pack needs ${needed} cells but only ${usable.length} usable cells are loaded`
+    };
+  }
+
+  const discarded = [];
+  let pool = [...usable];
+
+  // 1) internal-resistance outliers (only when we can afford to drop them
+  //    and there is enough IR data for a robust median)
+  const irs = pool.filter(c => Number.isFinite(c.ir)).map(c => c.ir);
+  let spare = pool.length - needed;
+  if (spare > 0 && irs.length >= Math.min(8, pool.length)) {
+    const med = median(irs);
+    const threshold = med + Math.max(3.5 * medianAbsDev(irs, med), 0.3 * med);
+    const outliers = pool
+      .filter(c => Number.isFinite(c.ir) && c.ir > threshold)
+      .sort((a, b) => b.ir - a.ir)
+      .slice(0, spare);
+    for (const c of outliers) {
+      discarded.push({ cell: c, reason: `high internal resistance (${fmt(c.ir, 1)} mΩ vs. median ${fmt(med, 1)} mΩ)` });
+    }
+    const drop = new Set(outliers);
+    pool = pool.filter(c => !drop.has(c));
+  }
+
+  // 2) lowest capacities
+  pool.sort((a, b) => a.capacity - b.capacity);
+  spare = pool.length - needed;
+  for (const c of pool.slice(0, spare)) {
+    discarded.push({ cell: c, reason: `lowest capacity (${fmt(c.capacity, 0)} mAh)` });
+  }
+  pool = pool.slice(spare);
+
+  const groups = balanceCellGroups(pool, s, p).map(g => {
+    const haveIr = g.cells.every(c => Number.isFinite(c.ir) && c.ir > 0);
+    return {
+      cells: g.cells,
+      sum: g.sum,
+      effIr: haveIr ? 1 / g.cells.reduce((acc, c) => acc + 1 / c.ir, 0) : null
+    };
+  });
+
+  const sums = groups.map(g => g.sum);
+  const groupMin = Math.min(...sums);
+  const groupMax = Math.max(...sums);
+  const groupMean = sums.reduce((a, b) => a + b, 0) / sums.length;
+  return {
+    ok: true, needed, groups, discarded,
+    capacityAh: groupMin / 1000,
+    groupMin, groupMax, groupMean,
+    spreadPct: groupMean > 0 ? ((groupMax - groupMin) / groupMean) * 100 : 0,
+    packIr: groups.every(g => g.effIr !== null) ? groups.reduce((a, g) => a + g.effIr, 0) : null
+  };
+}
+
 /* ---- formatting helpers ---- */
 
 function fmt(value, digits = 1) {

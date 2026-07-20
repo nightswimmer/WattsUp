@@ -22,7 +22,8 @@
       positions: state.positions,
       referenceId: state.referenceId,
       currency: state.currency,
-      connections: StripPlanner.getState()
+      connections: StripPlanner.getState(),
+      cellmgr: CellManager.getState()
     };
   }
 
@@ -34,6 +35,7 @@
     state.referenceId = state.packs.some(p => p.id === data.referenceId) ? data.referenceId : null;
     state.currency = data.currency || "€";
     StripPlanner.setState(data.connections || null);
+    CellManager.setState(data.cellmgr || null);
     return true;
   }
 
@@ -576,24 +578,42 @@
     StripPlanner.render();
   }
 
+  function renderCells() {
+    CellManager.setPacks(state.packs.map(p => ({
+      id: p.id,
+      name: p.name,
+      s: p.s,
+      p: p.p,
+      vnom: p.chemistry ? CHEMISTRIES[p.chemistry]?.vNom : null
+    })));
+    CellManager.render();
+  }
+
   function renderAll() {
     renderPacks();
     renderComparison();
     renderChart();
     renderCanvas();
     renderStrips();
+    renderCells();
     if (document.getElementById("tab-planner").hidden) plannerDirty = true;
   }
 
   /* ---------- tabs ---------- */
   const TAB_KEY = "wattsup-tab-v1";
+  const TABS = ["planner", "connections", "cells"];
   let plannerDirty = false;   // chart/canvas were (re)rendered while the planner tab was hidden
 
   function activateTab(name) {
-    const planner = name !== "connections";
+    if (!TABS.includes(name)) name = "planner";
+    const planner = name === "planner";
     const wasHidden = document.getElementById("tab-planner").hidden;
-    document.getElementById("tab-planner").hidden = !planner;
-    document.getElementById("tab-connections").hidden = planner;
+    for (const t of TABS) {
+      document.getElementById("tab-" + t).hidden = t !== name;
+      const btn = document.getElementById("tab-btn-" + t);
+      btn.classList.toggle("active", t === name);
+      btn.setAttribute("aria-selected", t === name);
+    }
     if (planner && wasHidden && plannerDirty) {
       // hidden elements had no size — re-render the chart and re-fit the canvas now
       plannerDirty = false;
@@ -602,23 +622,21 @@
         if (state.packs.length > 0) TopView.fit();
       });
     }
-    document.getElementById("tab-btn-planner").classList.toggle("active", planner);
-    document.getElementById("tab-btn-connections").classList.toggle("active", !planner);
-    document.getElementById("tab-btn-planner").setAttribute("aria-selected", planner);
-    document.getElementById("tab-btn-connections").setAttribute("aria-selected", !planner);
     document.getElementById("add-pack-btn").hidden = !planner;   // belongs to the planner tab
-    try { localStorage.setItem(TAB_KEY, planner ? "planner" : "connections"); } catch { /* private mode */ }
+    try { localStorage.setItem(TAB_KEY, name); } catch { /* private mode */ }
   }
 
   /* ---------- init ---------- */
   function init() {
     populateSelects();
     StripPlanner.init({ onChange: save });   // before load() so setState can reach the inputs
+    CellManager.init({ onChange: save });
     load();
 
-    document.getElementById("tab-btn-planner").addEventListener("click", () => activateTab("planner"));
-    document.getElementById("tab-btn-connections").addEventListener("click", () => activateTab("connections"));
-    activateTab(localStorage.getItem(TAB_KEY) === "connections" ? "connections" : "planner");
+    for (const t of TABS) {
+      document.getElementById("tab-btn-" + t).addEventListener("click", () => activateTab(t));
+    }
+    activateTab(localStorage.getItem(TAB_KEY) || "planner");
 
     const currencySelect = document.getElementById("currency-select");
     currencySelect.value = state.currency;
